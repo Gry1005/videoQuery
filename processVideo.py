@@ -8,6 +8,8 @@ from PIL import Image, ImageTk
 import multiprocessing
 from pydub import AudioSegment
 
+#GUI代码
+
 #显示参数
 window_width = 960
 window_height = 720
