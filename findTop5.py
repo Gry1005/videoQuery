@@ -199,72 +199,97 @@ def buildingDatabase(jpg_dir):
     return Hlist,Vlist,MotionList,dhashList
 
 
-jpg_root="E:/cs576/project/data/Data_jpg/"
-voice_root="E:/cs576/project/data/Data_wav/"
+def countError(list1,list2):
 
-cate={'ads':[0,1,2,3],'cartoon':[0,1,2,3,4],'concerts':[0,1,2,3],'interview':[0,1,2,3,4,5],'movies':[0,1,2,3,4],'sport':[0,1,2,4,5]}
+    list1.sort()
+    list2.sort()
 
-jsonDict={}
+    sumSimilar=0
 
-for key in cate.keys():
+    for i in range(0,480):
 
-    jpg_dir=jpg_root+key+"/"
-    voice_dir=voice_root+key+"/"
+        x=float(list1[i])
+        y=float(list2[i])
 
-    iRange=cate[key]
+        if max(x,y)==0:
+            similar=0
+        else:
+            similar=(max(x,y)-min(x,y))/max(x,y)
 
-    for i in iRange:
+        sumSimilar=sumSimilar+similar
 
-        item=key+"_"+str(i)
+    avgSimi=sumSimilar/480
 
-        print('item:',item)
+    return avgSimi
 
-        jpg_path = jpg_dir + item + "/"
-        wav_path = voice_dir + item + ".wav"
+def countErrorHash(list1,list2):
 
-        print(jpg_path)
-        print(wav_path)
+    list1.sort()
+    list2.sort()
 
-        Hlist, Vlist, MotionList, dhashList = buildingDatabase(jpg_path)
+    sumSimilar = 0
 
-        # build json
-        jsonDict[item]={'jpgPath':jpg_path,'wavPath':wav_path,'Hlist':Hlist,'Vlist':Vlist,'MotionList':MotionList,'dhashList':dhashList}
+    for i in range(0, 480):
 
-        # 作图
-        '''
-        x = [i for i in range(0, 480)]
+        sumSimilar = sumSimilar + hamming_distance(list1[i],list2[i])/16
 
-        figSize = (10, 5)
+    avgSimi = sumSimilar / 480
 
-        plt.figure(1, figsize=figSize)
-        plt.title('H:')
-        plt.plot(x, Hlist)
-        plt.show()
-
-        plt.figure(2, figsize=figSize)
-        plt.title('V:')
-        plt.plot(x, Vlist)
-        plt.show()
-
-        plt.figure(3, figsize=figSize)
-        plt.title('Motion:')
-        plt.plot(x, MotionList)
-        plt.show()
-        '''
-
-#json_str = json.dumps(jsonDict)
-#new_dict = json.loads(json_str)
-
-with open("../dataBase/data.json","w") as f:
-    json.dump(jsonDict,f)
-    print("加载入文件完成...")
+    return avgSimi
 
 
+def findTop5(input):
+
+    #超参数
+    jpg_root = "E:/cs576/project/data/Data_jpg/"
+    voice_root = "E:/cs576/project/data/Data_wav/"
+    json_path="../dataBase/data.json"
+
+    input = input
+
+    jpg_dir = jpg_root + input.split("_")[0] + "/" + input + "/"
+    voice_dir = voice_root + input.split("_")[0] + input + ".wav"
+
+    Hlist, Vlist, MotionList, dhashList = buildingDatabase(jpg_dir)
+
+    with open(json_path, 'r') as load_f:
+        load_dict = json.load(load_f)
+        print(load_dict)
 
 
+    compareDic={}
 
+    for key in load_dict:
 
+        Hlist2=load_dict[key]['Hlist']
+        Vlist2 = load_dict[key]['Vlist']
+        MotionList2 = load_dict[key]['MotionList']
+        dhashList2 = load_dict[key]['dhashList']
 
+        Hsimi=countError(Hlist,Hlist2)
+        Vsimi = countError(Vlist, Vlist2)
+        MotionSimi = countError(MotionList, MotionList2)
+        dhashSimi = countErrorHash(dhashList, dhashList2)
+
+        allSimi=0.4*Hsimi+0.3*MotionSimi+0.1*Vsimi+0.2*dhashSimi
+
+        compareDic[key]={'allSimi':allSimi,'Hsimi':Hsimi,'Vsimi':Vsimi,'MotionSimi':MotionSimi,'dhashSimi':dhashSimi}
+
+    compareList=sorted(compareDic.items(), key=lambda item: item[1]['allSimi'])
+
+    return compareList
+
+input="concerts_0"
+compareList=findTop5(input)
+
+print('compareDic:',compareList)
+
+count = 0
+for key, value in compareList:
+    print(key, ':', value)
+    count += 1
+    if count == 5:
+        break
 
 
 

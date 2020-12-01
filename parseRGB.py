@@ -8,7 +8,7 @@ f.close()
 width=640
 height=360
 
-img_out=np.zeros((360,640,3),dtype=np.uint8)
+img_out=np.zeros((height,width,3),dtype=np.uint8)
 
 ind = 0
 for y in range(0,height):
