@@ -5,7 +5,6 @@ import tkinter as tk
 from tkinter import *
 import cv2
 import multiprocessing
-from pydub import AudioSegment
 import os
 from PIL import Image, ImageTk
 from haishoku.haishoku import Haishoku
@@ -18,6 +17,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import json
 import sys
+import wave
+from pydub import AudioSegment
+from scipy.fftpack import fft
 
 #GUI代码
 
@@ -108,7 +110,7 @@ def video(input_video,input_voice):
     # print('voice1_path:', voice1_path)
 
     # 用一个函数，得到listboxDic
-    videoProcessing(video1_path)
+    videoProcessing(video1_path,input_voice)
 
     #print(listboxDic)
 
@@ -206,7 +208,7 @@ lb1.place(x=imagepos_x+100,y=imagepos_y)
 
 #Listbox
 def lb_click(event):
-    global isPause2,index2,flag2,video2_path,voice2_path,sound2,video2_files,canvs4,canvs5,canvs6,Hlist2,Vlist2,MotionList2,video2_dhash_list
+    global isPause2,index2,flag2,video2_path,voice2_path,sound2,video2_files,canvs3,canvs4,canvs5,canvs6,Hlist2,Vlist2,MotionList2,video2_dhash_list
 
     isPause2=True
     index2=0
@@ -236,12 +238,23 @@ def lb_click(event):
     Vlist2 = listboxDic[selectedKey]['Vlist']
     MotionList2 = listboxDic[selectedKey]['MotionList']
     video2_dhash_list = listboxDic[selectedKey]['dhashList']
+    minErrorlist1=listboxDic[selectedKey]['minErrorlist1']
+    minErrorlist2 = listboxDic[selectedKey]['minErrorlist2']
 
     x = [i for i in range(0, 480)]
 
+    canvs3.get_tk_widget().destroy()
     canvs4.get_tk_widget().destroy()
     canvs5.get_tk_widget().destroy()
     canvs6.get_tk_widget().destroy()
+
+    f3 = Figure(figsize=figSize, dpi=dpi)
+    f3_plot = f3.add_subplot(111)
+    f3_plot.xaxis.set_visible(False)
+    f3_plot.plot(x, minErrorlist1,color='red')
+    # canvs = FigureCanvasTkAgg(f1, leftFrm)
+    canvs3 = FigureCanvasTkAgg(f3, leftFrm)
+    canvs3.get_tk_widget().place(x=canvs_x, y=canvs_y+200)
 
     f4 = Figure(figsize=figSize, dpi=dpi)
     f4_plot = f4.add_subplot(111)
@@ -254,14 +267,14 @@ def lb_click(event):
     f5 = Figure(figsize=figSize, dpi=dpi)
     f5_plot = f5.add_subplot(111)
     f5_plot.xaxis.set_visible(False)
-    f5_plot.plot(x, Vlist2)
+    f5_plot.plot(x, MotionList2)
     canvs5 = FigureCanvasTkAgg(f5, rightFrm)
     canvs5.get_tk_widget().place(x=canvs_x, y=canvs_y+100)
 
     f6 = Figure(figsize=figSize, dpi=dpi)
     f6_plot = f6.add_subplot(111)
     f6_plot.xaxis.set_visible(False)
-    f6_plot.plot(x, MotionList2)
+    f6_plot.plot(x, minErrorlist2,color='red')
     canvs6 = FigureCanvasTkAgg(f6, rightFrm)
     canvs6.get_tk_widget().place(x=canvs_x, y=canvs_y+200)
 
@@ -370,6 +383,7 @@ lb_dhash_left.place(x=0,y=imagepos_y+305)
 lb_dhash_right=tk.Label(rightFrm,text="dhash:")
 lb_dhash_right.place(x=0,y=imagepos_y+305)
 
+
 #处理视频
 
 # 超参数
@@ -407,8 +421,106 @@ def hamming_distance(str1, str2):
             count += 1
     return count
 
+#voice processing
+def wave_read(path):
+    # 打开wav文件 ，open返回一个的是一个Wave_read类的实例，
+    # 通过调用它的方法读取WAV文件的格式和数据
+    # 截取前20秒音频
+    newpath = './test.wav'
+    start_time = 0
+    end_time = 20000
+    sound = AudioSegment.from_wav(path)
+    word = sound[start_time:end_time]
+    word.export(newpath, format="wav")
 
-def buildingDatabase(jpg_dir):
+    f = wave.open(newpath, "rb")
+    # 一次性返回所有的WAV文件的格式信息，它返回的是一个组元(tuple)：声道数, 量化位数（byte单位）,
+    # 采样频率, 采样点数, 压缩类型, 压缩类型的描述。wave模块只支持非压缩的数据，因此可以忽略最后两个信息
+    params = f.getparams()
+    # 读取波形数据
+    nchannels, sampwidth, framerate, nframes = params[:4]
+    # 读取声音数据，传递一个参数指定需要读取的长度（以取样点为单位）
+    str_date = f.readframes(nframes)
+    f.close()
+    # 需要根据声道数和量化单位，将读取的二进制数据转换为一个可以计算的数组
+    wave_date = np.frombuffer(str_date, dtype=np.short)
+    # 将wave_data数组改为2列，行数自动匹配。在修改shape的属性时，需使得数组的总长度不变。
+    wave_date.shape = -1, 2
+    # 转置数据,使成为2行的数据，方便下面时间匹配
+    wave_date = wave_date.T
+    # 通过取样点数和取样频率计算出每个取样的时间,也就是周期T=采样单数/采样率
+    time = np.arange(0, nframes) * (1.0 / framerate)
+    return wave_date, time
+
+
+def date_fft(data, time, start, end):
+    t = []
+    y = []
+    for i in range(time.size):
+        if (time[i] >= start) & (time[i] <= end):
+            t = np.append(t, time[i])
+            y = np.append(y, data[0][i])  # 取左声道
+    n = len(t)  # 信号长度
+    yy = fft(y)
+    yf = abs(yy)  # 取绝对值
+    yf1 = abs(fft(y)) / n  # 归一化处理
+    yf2 = yf1[range(int(n / 2))]  # 由于对称性，只取一半区间
+
+    xf = np.arange(len(y))  # 频率
+    xf1 = xf
+    xf2 = xf[range(int(n / 2))]  # 取一半区间
+
+    return yf2
+
+    # 显示原始序列
+    plt.figure()
+    plt.subplot(221)
+    plt.plot(t, y, 'g')
+    plt.xlabel("Time")
+    plt.ylabel("Amplitude")
+    plt.title("Original wave")
+
+    # 显示取绝对值后的序列
+    plt.subplot(222)
+    plt.plot(xf, yf)
+    plt.xlabel("Freq (Hz)")
+    plt.ylabel("|Y(freq)|")
+    plt.title("FFT of Mixed wave(two sides frequency range", fontsize=7, color='#7A378B')
+    # 注意这里的颜色可以查询颜色代码表
+
+    # 显示归一化处理后双边序列
+    plt.subplot(223)
+    plt.plot(xf1, yf1)
+    # 注意这里的颜色可以查询颜色代码表
+    plt.xlabel("Freq (Hz)")
+    plt.ylabel("|Y(freq)|")
+    plt.title('FFT of Mixed wave(Normalized processing)', fontsize=10, color='#F08080')
+
+    # 显示归一化处理后单边序列
+    plt.subplot(224)
+    plt.plot(xf2, yf2, 'b')
+    # 注意这里的颜色可以查询颜色代码表
+    plt.xlabel("Freq (Hz)")
+    plt.ylabel("|Y(freq)|")
+    plt.title('FFT of Mixed wave', fontsize=10, color='#F08080')
+
+    plt.show()
+
+def get_voice_descriptor(wav_path):
+
+    wave_date, time = wave_read(wav_path)
+    x = date_fft(wave_date, time, 1, 2)
+
+    sum=0
+
+    for i in range(len(x) - 4021):
+        sum += x[i]
+
+    return sum/19980
+
+
+
+def buildingDatabase(jpg_dir,wav_path):
     # 超参数
     jpg_dir = jpg_dir
     image_files = os.listdir(jpg_dir)
@@ -568,65 +680,96 @@ def buildingDatabase(jpg_dir):
     print('Motion len:', len(MotionList))
     print('MotionList:', MotionList)
 
-    return Hlist,Vlist,MotionList,dhashList
+    #voice
+    voiceValue = get_voice_descriptor(wav_path)
+    print('voiceValue:',voiceValue)
 
-def countError(list1,list2):
+    return Hlist,Vlist,MotionList,dhashList,voiceValue
 
-    list1.sort()
-    list2.sort()
 
-    sumSimilar=0
+def getError(s1,s2):
+    x = float(s1)
+    y = float(s2)
+
+    if max(x, y) == 0:
+        error = 0
+    else:
+        error = (max(x, y) - min(x, y)) / max(x, y)
+
+    return error
+
+def getError_dhash(s1,s2):
+
+    return hamming_distance(s1, s2) / 16
+
+
+def countError_double(Hlist, Vlist, MotionList, dhashList,Hlist2, Vlist2, MotionList2, dhashList2):
+
+    #list1的每一帧去list2中找最对应的帧
+
+    sumError1=0
+    minErrorlist1=[]
 
     for i in range(0,480):
+        minError = -1
+        for j in range(0,480):
 
-        x=float(list1[i])
-        y=float(list2[i])
+            curError=0.5*getError(Hlist[i],Hlist2[j])+0.3*getError(MotionList[i],MotionList2[j])+0.1*getError_dhash(dhashList[i],dhashList2[j])+0.1*getError(Vlist[i],Vlist2[j])
 
-        if max(x,y)==0:
-            similar=0
-        else:
-            similar=(max(x,y)-min(x,y))/max(x,y)
+            if minError==-1:
+                minError=curError
+            else:
+                minError=min(minError,curError)
 
-        sumSimilar=sumSimilar+similar
+        sumError1+=minError
+        minErrorlist1.append(minError)
 
-    avgSimi=sumSimilar/480
+    #list2的每一帧去list1中找最对应的帧
+    sumError2 = 0
+    minErrorlist2 = []
 
-    return avgSimi
+    for i in range(0,480):
+        minError = -1
+        for j in range(0,480):
 
-def countErrorHash(list1,list2):
+            curError=0.5*getError(Hlist2[i],Hlist[j])+0.3*getError(MotionList2[i],MotionList[j])+0.1*getError_dhash(dhashList2[i],dhashList[j])+0.1*getError(Vlist2[i],Vlist[j])
 
-    list1.sort()
-    list2.sort()
+            if minError==-1:
+                minError=curError
+            else:
+                minError=min(minError,curError)
 
-    sumSimilar = 0
+        sumError2+=minError
+        minErrorlist2.append(minError)
 
-    for i in range(0, 480):
+    avgError=(sumError1+sumError2)/960
 
-        sumSimilar = sumSimilar + hamming_distance(list1[i],list2[i])/16
+    return avgError,minErrorlist1,minErrorlist2
 
-    avgSimi = sumSimilar / 480
-
-    return avgSimi
-
-def findTop5(Hlist, Vlist, MotionList, dhashList):
+def findTop5_double(Hlist, Vlist, MotionList, dhashList,voiceValue):
 
     compareDic={}
 
+    count=0
     for key in load_dict:
+        print('comparing video:',count)
 
+        #对database每一个视频算一个
         Hlist2=load_dict[key]['Hlist']
         Vlist2 = load_dict[key]['Vlist']
         MotionList2 = load_dict[key]['MotionList']
         dhashList2 = load_dict[key]['dhashList']
+        voiceValue2=load_dict[key]['voiceValue']
 
-        Hsimi=countError(Hlist.copy(),Hlist2.copy())
-        Vsimi = countError(Vlist.copy(), Vlist2.copy())
-        MotionSimi = countError(MotionList.copy(), MotionList2.copy())
-        dhashSimi = countErrorHash(dhashList.copy(), dhashList2.copy())
+        avgError,minErrorlist1,minErrorlist2=countError_double(Hlist, Vlist, MotionList, dhashList,Hlist2, Vlist2, MotionList2, dhashList2)
 
-        allSimi=0.4*Hsimi+0.3*MotionSimi+0.1*Vsimi+0.2*dhashSimi
+        #add voice
+        voiceError=getError(voiceValue,voiceValue2)
+        avgError=0.9*avgError+0.1*voiceError
 
-        compareDic[key]={'allSimi':allSimi,'Hsimi':Hsimi,'Vsimi':Vsimi,'MotionSimi':MotionSimi,'dhashSimi':dhashSimi}
+        compareDic[key]={'allSimi':avgError,'voiceError':voiceError,'minErrorlist1':minErrorlist1,'minErrorlist2':minErrorlist2}
+
+        count+=1
 
     compareList=sorted(compareDic.items(), key=lambda item: item[1]['allSimi'])
 
@@ -634,16 +777,16 @@ def findTop5(Hlist, Vlist, MotionList, dhashList):
 
 
 #视频处理
-def videoProcessing(video_path):
+def videoProcessing(video_path,wav_path):
     global listboxDic,canvs,canvs2,canvs3,canvs4,canvs5,canvs6,video1_dhash_list,video2_dhash_list,Hlist,Vlist,MotionList,Hlist2,Vlist2,MotionList2
 
     # 超参数
     jpg_dir = video_path
 
-    Hlist, Vlist, MotionList, dhashList=buildingDatabase(jpg_dir)
+    Hlist, Vlist, MotionList, dhashList, voiceValue=buildingDatabase(jpg_dir,wav_path)
 
     #findTop5
-    compareList=findTop5(Hlist, Vlist, MotionList, dhashList)
+    compareList=findTop5_double(Hlist, Vlist, MotionList, dhashList,voiceValue)
 
     #生成listboxDic
     count = 0
@@ -652,7 +795,7 @@ def videoProcessing(video_path):
 
         load=load_dict[key]
 
-        listboxDic[key]={'error':value['allSimi'],'jpgPath':load['jpgPath'],'wavPath':load['wavPath'],'Hlist':load['Hlist'],'Vlist':load['Vlist'],'MotionList':load['MotionList'],'dhashList':load['dhashList']}
+        listboxDic[key]={'error':value['allSimi'],'minErrorlist1':value['minErrorlist1'],'minErrorlist2':value['minErrorlist2'],'jpgPath':load['jpgPath'],'wavPath':load['wavPath'],'Hlist':load['Hlist'],'Vlist':load['Vlist'],'MotionList':load['MotionList'],'dhashList':load['dhashList']}
 
         count += 1
         if count == 5:
@@ -662,6 +805,9 @@ def videoProcessing(video_path):
     Vlist2 = listboxDic[list(listboxDic.keys())[0]]['Vlist']
     MotionList2 = listboxDic[list(listboxDic.keys())[0]]['MotionList']
     dhashList2 = listboxDic[list(listboxDic.keys())[0]]['dhashList']
+
+    minErrorlist1=listboxDic[list(listboxDic.keys())[0]]['minErrorlist1']
+    minErrorlist2=listboxDic[list(listboxDic.keys())[0]]['minErrorlist2']
 
     video1_dhash_list = dhashList
     video2_dhash_list = dhashList2
@@ -680,14 +826,14 @@ def videoProcessing(video_path):
     f2 = Figure(figsize=figSize, dpi=dpi)
     f2_plot = f2.add_subplot(111)
     f2_plot.xaxis.set_visible(False)
-    f2_plot.plot(x, Vlist)
+    f2_plot.plot(x, MotionList)
     canvs2 = FigureCanvasTkAgg(f2, leftFrm)
     canvs2.get_tk_widget().place(x=canvs_x, y=canvs_y+100)
 
     f3 = Figure(figsize=figSize, dpi=dpi)
     f3_plot = f3.add_subplot(111)
     f3_plot.xaxis.set_visible(False)
-    f3_plot.plot(x, MotionList)
+    f3_plot.plot(x, minErrorlist1,color='red')
     canvs3 = FigureCanvasTkAgg(f3, leftFrm)
     canvs3.get_tk_widget().place(x=canvs_x, y=canvs_y+200)
 
@@ -702,14 +848,14 @@ def videoProcessing(video_path):
     f5 = Figure(figsize=figSize, dpi=dpi)
     f5_plot = f5.add_subplot(111)
     f5_plot.xaxis.set_visible(False)
-    f5_plot.plot(x, Vlist2)
+    f5_plot.plot(x, MotionList2)
     canvs5 = FigureCanvasTkAgg(f5, rightFrm)
     canvs5.get_tk_widget().place(x=canvs_x, y=canvs_y+100)
 
     f6 = Figure(figsize=figSize, dpi=dpi)
     f6_plot = f6.add_subplot(111)
     f6_plot.xaxis.set_visible(False)
-    f6_plot.plot(x, MotionList2)
+    f6_plot.plot(x, minErrorlist2,color='red')
     canvs6 = FigureCanvasTkAgg(f6, rightFrm)
     canvs6.get_tk_widget().place(x=canvs_x, y=canvs_y+200)
 

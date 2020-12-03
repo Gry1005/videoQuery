@@ -1,4 +1,4 @@
-d = {'lilee':25, 'wangyan':21, 'liqun':32, 'age':19}
-d=sorted(d.items(), key=lambda item:item[1])
+d = {'key1':{'lilee':25, 'wangyan':21, 'liqun':32, 'age':19}}
+d = d['key1']['name']=18
 
-print(d)
+print(d['key1'])
