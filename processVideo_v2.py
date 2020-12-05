@@ -260,6 +260,7 @@ def lb_click(event):
     f4_plot = f4.add_subplot(111)
     f4_plot.xaxis.set_visible(False)
     f4_plot.plot(x, Hlist2)
+    f4_plot.plot(x, Vlist2,color="green")
     # canvs = FigureCanvasTkAgg(f1, leftFrm)
     canvs4 = FigureCanvasTkAgg(f4, rightFrm)
     canvs4.get_tk_widget().place(x=canvs_x, y=canvs_y)
@@ -707,6 +708,12 @@ def countError_double(Hlist, Vlist, MotionList, dhashList,Hlist2, Vlist2, Motion
 
     #list1的每一帧去list2中找最对应的帧
 
+    #参数
+    wH=0.4
+    wM=0.3
+    wD=0.1
+    wV=0.2
+
     sumError1=0
     minErrorlist1=[]
 
@@ -714,7 +721,7 @@ def countError_double(Hlist, Vlist, MotionList, dhashList,Hlist2, Vlist2, Motion
         minError = -1
         for j in range(0,480):
 
-            curError=0.5*getError(Hlist[i],Hlist2[j])+0.3*getError(MotionList[i],MotionList2[j])+0.1*getError_dhash(dhashList[i],dhashList2[j])+0.1*getError(Vlist[i],Vlist2[j])
+            curError=wH*getError(Hlist[i],Hlist2[j])+wM*getError(MotionList[i],MotionList2[j])+wD*getError_dhash(dhashList[i],dhashList2[j])+wV*getError(Vlist[i],Vlist2[j])
 
             if minError==-1:
                 minError=curError
@@ -732,7 +739,7 @@ def countError_double(Hlist, Vlist, MotionList, dhashList,Hlist2, Vlist2, Motion
         minError = -1
         for j in range(0,480):
 
-            curError=0.5*getError(Hlist2[i],Hlist[j])+0.3*getError(MotionList2[i],MotionList[j])+0.1*getError_dhash(dhashList2[i],dhashList[j])+0.1*getError(Vlist2[i],Vlist[j])
+            curError=wH*getError(Hlist2[i],Hlist[j])+wM*getError(MotionList2[i],MotionList[j])+wD*getError_dhash(dhashList2[i],dhashList[j])+wV*getError(Vlist2[i],Vlist[j])
 
             if minError==-1:
                 minError=curError
@@ -765,9 +772,9 @@ def findTop5_double(Hlist, Vlist, MotionList, dhashList,voiceValue):
 
         #add voice
         voiceError=getError(voiceValue,voiceValue2)
-        avgError=0.9*avgError+0.1*voiceError
+        finalError=0.9*avgError+0.1*voiceError
 
-        compareDic[key]={'allSimi':avgError,'voiceError':voiceError,'minErrorlist1':minErrorlist1,'minErrorlist2':minErrorlist2}
+        compareDic[key]={'allSimi':finalError,'visualError':avgError,'voiceError':voiceError,'minErrorlist1':minErrorlist1,'minErrorlist2':minErrorlist2}
 
         count+=1
 
@@ -819,6 +826,7 @@ def videoProcessing(video_path,wav_path):
     f1_plot = f1.add_subplot(111)
     f1_plot.xaxis.set_visible(False)
     f1_plot.plot(x, Hlist)
+    f1_plot.plot(x,Vlist,color='green')
     #canvs = FigureCanvasTkAgg(f1, leftFrm)
     canvs = FigureCanvasTkAgg(f1,leftFrm)
     canvs.get_tk_widget().place(x=canvs_x, y=canvs_y)
@@ -841,6 +849,7 @@ def videoProcessing(video_path,wav_path):
     f4_plot = f4.add_subplot(111)
     f4_plot.xaxis.set_visible(False)
     f4_plot.plot(x, Hlist2)
+    f4_plot.plot(x, Vlist2,color="green")
     # canvs = FigureCanvasTkAgg(f1, leftFrm)
     canvs4 = FigureCanvasTkAgg(f4, rightFrm)
     canvs4.get_tk_widget().place(x=canvs_x, y=canvs_y)
@@ -861,6 +870,9 @@ def videoProcessing(video_path,wav_path):
 
 
 if __name__ == '__main__':
+
+    #for pyinstaller
+    multiprocessing.freeze_support()
 
     input_video=sys.argv[1]
     input_voice=sys.argv[2]
